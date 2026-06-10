@@ -30,8 +30,12 @@
   .row { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:10px;
     padding:7px 0; border-bottom:1px solid var(--line); }
   .row:last-of-type { border-bottom:none; }
-  .row .lab { color:var(--muted); font-size:14px; }
+  .row .lab { color:var(--muted); font-size:14px; cursor:pointer; }
   .row .lab small { display:block; font-size:11px; opacity:.7; }
+  .row.anchored .lab { color:var(--accent); }
+  .anchormark { display:none; margin-left:5px; font-size:11px; }
+  .row.anchored .anchormark { display:inline; }
+  .hint { color:var(--muted); font-size:11.5px; margin:13px 2px 0; }
   .amt { position:relative; }
   .amt .cur { position:absolute; left:12px; top:50%; transform:translateY(-50%);
     color:var(--muted); font-size:16px; pointer-events:none; }
@@ -66,6 +70,7 @@
   </div>
 
   <div id="rows"></div>
+  <p class="hint">⚓ Tap a label to anchor it — the anchored amount stays fixed when you switch year basis.</p>
 
   <div class="foot">
     <button id="reset">Reset</button>
@@ -98,8 +103,8 @@ function ppy(id, basis) {
 
 let st = loadState();
 function loadState() {
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s.annual !== "undefined") return s; } catch (e) {}
-  return { annual: 600 * 52, basis: "52", cur: "$" };  // seed: $600/week
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s.annual !== "undefined") { if (!s.anchor) s.anchor = "week"; return s; } } catch (e) {}
+  return { annual: 600 * 52, basis: "52", cur: "$", anchor: "week" };  // seed: $600/week, anchored on the week
 }
 function save() { localStorage.setItem(KEY, JSON.stringify(st)); }
 
@@ -112,15 +117,19 @@ const rowsEl = document.getElementById("rows");
 PERIODS.forEach((p) => {
   const row = document.createElement("div");
   row.className = "row";
+  row.id = "row-" + p.id;
   row.innerHTML =
-    `<div class="lab">${p.lab}<small>${p.sub}</small></div>` +
+    `<div class="lab"><span>${p.lab}<span class="anchormark">⚓</span></span><small>${p.sub}</small></div>` +
     `<div class="amt"><span class="cur"></span>` +
     `<input id="in-${p.id}" inputmode="decimal" enterkeyhint="done" placeholder="0.00" /></div>`;
   rowsEl.appendChild(row);
+  // tap the label to anchor this row (held fixed across a basis switch)
+  row.querySelector(".lab").addEventListener("click", () => { st.anchor = p.id; save(); render(); });
   const inp = row.querySelector("input");
   inp.addEventListener("input", () => {
     const v = parse(inp.value);
     st.annual = v === null ? null : v * ppy(p.id, st.basis);
+    st.anchor = p.id;        // the row you type becomes the anchor
     save();
     render(p.id);            // don't overwrite the field being typed
   });
@@ -140,6 +149,7 @@ function render(skipId) {
     `Month = Week × <b>${wm.toFixed(2)}</b> &nbsp;·&nbsp; Year = Week × <b>${wy.toFixed(st.basis === "365" ? 2 : 0)}</b> &nbsp;(not ×4)`;
   // rows
   PERIODS.forEach((p) => {
+    document.getElementById("row-" + p.id).classList.toggle("anchored", p.id === st.anchor);
     if (p.id === skipId) return;
     const inp = document.getElementById("in-" + p.id);
     inp.value = st.annual === null ? "" : fmt(st.annual / ppy(p.id, st.basis));
@@ -147,12 +157,21 @@ function render(skipId) {
 }
 
 document.querySelectorAll("#basis button").forEach((b) =>
-  b.addEventListener("click", () => { st.basis = b.dataset.b; save(); render(); }));
+  b.addEventListener("click", () => {
+    const nb = b.dataset.b;
+    if (nb === st.basis) return;
+    // hold the ANCHOR's value across the switch: read it at the old basis,
+    // then rebuild the annual base from it at the new basis.
+    const anchorVal = st.annual === null ? null : st.annual / ppy(st.anchor, st.basis);
+    st.basis = nb;
+    if (anchorVal !== null) st.annual = anchorVal * ppy(st.anchor, st.basis);
+    save(); render();
+  }));
 document.getElementById("cur").addEventListener("input", (e) => {
   st.cur = e.target.value || ""; save(); render(document.activeElement && document.activeElement.id ? null : undefined);
 });
 document.getElementById("reset").addEventListener("click", () => {
-  st = { annual: 600 * 52, basis: st.basis, cur: st.cur }; save(); render();
+  st = { annual: 600 * 52, basis: st.basis, cur: st.cur, anchor: "week" }; save(); render();
 });
 
 render();
