@@ -4,7 +4,7 @@
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
 <meta name="theme-color" content="#0b0d12" />
-<title>RentRhythm</title>
+<title>PayRhythm</title>
 <link rel="manifest" href="./manifest.json" />
 <link rel="icon" href="./icon-192.png" />
 <style>
@@ -103,11 +103,11 @@
 </style>
 </head>
 <body>
-  <h1>RentRhythm</h1>
+  <h1>PayRhythm</h1>
 
   <div class="tabs" id="tabs">
     <button data-tab="quick">Quick convert</button>
-    <button data-tab="cashflow">My cashflow</button>
+    <button data-tab="cashflow">Cashflow</button>
   </div>
 
   <!-- QUICK CONVERT -->
@@ -162,7 +162,7 @@ const PERIODS = [
   { id:"day",       lab:"Day",       sub:"per day",            tier:2 },
   { id:"quarter",   lab:"Quarter",   sub:"per 3 months",       tier:2 }
 ];
-const KEY = "rentrhythm.state";
+const KEY = "payrhythm.state";
 const WPY = 52, DPY = 364;   // 1 year = 52 weeks = 364 days (rental standard)
 
 function ppy(id) {

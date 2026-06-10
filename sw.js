@@ -1,5 +1,5 @@
-// RentRhythm service worker — stale-while-revalidate.
-const CACHE = "rentrhythm-v1";
+// PayRhythm service worker — stale-while-revalidate.
+const CACHE = "payrhythm-v1";
 const SHELL = ["./", "./index.html", "./manifest.json", "./icon-192.png", "./icon-512.png"];
 
 self.addEventListener("install", (e) => {

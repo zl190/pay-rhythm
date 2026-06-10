@@ -1,6 +1,6 @@
 {
-  "name": "RentRhythm — money by week / month / year",
-  "short_name": "RentRhythm",
+  "name": "PayRhythm — money by week / month / year",
+  "short_name": "PayRhythm",
   "description": "Convert any amount between day, week, fortnight, month, quarter, and year. A month isn't 4 weeks.",
   "start_url": "./index.html",
   "scope": "./",
