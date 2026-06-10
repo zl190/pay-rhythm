@@ -1,0 +1,165 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0b0d12" />
+<title>RentRhythm</title>
+<link rel="manifest" href="./manifest.json" />
+<link rel="icon" href="./icon-192.png" />
+<style>
+  :root {
+    --bg:#0b0d12; --panel:#11151c; --panel-2:#161b24; --line:#222a36;
+    --text:#e6edf3; --muted:#8b98a9; --accent:#56d364;
+  }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html, body { margin:0; background:var(--bg); color:var(--text);
+    font:16px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }
+  body { padding: max(16px, env(safe-area-inset-top)) 16px calc(28px + env(safe-area-inset-bottom));
+    max-width:460px; margin:0 auto; }
+  h1 { font-size:21px; margin:0 0 2px; letter-spacing:-0.01em; }
+  .tagline { color:var(--muted); font-size:13px; margin:0 0 16px; }
+
+  .basis { display:flex; gap:6px; margin-bottom:6px; }
+  .basis button { flex:1; padding:8px 0; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--muted); font-size:12.5px; cursor:pointer; }
+  .basis button.on { background:var(--accent); color:#0b0d12; border-color:var(--accent); font-weight:600; }
+  .factor { color:var(--muted); font-size:12px; margin:0 2px 16px; min-height:1em; }
+  .factor b { color:var(--accent); font-weight:600; }
+
+  .row { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:10px;
+    padding:7px 0; border-bottom:1px solid var(--line); }
+  .row:last-of-type { border-bottom:none; }
+  .row .lab { color:var(--muted); font-size:14px; }
+  .row .lab small { display:block; font-size:11px; opacity:.7; }
+  .amt { position:relative; }
+  .amt .cur { position:absolute; left:12px; top:50%; transform:translateY(-50%);
+    color:var(--muted); font-size:16px; pointer-events:none; }
+  .amt input { width:100%; padding:11px 12px 11px 26px; border-radius:10px;
+    border:1px solid var(--line); background:var(--panel); color:var(--text);
+    font-size:18px; font-variant-numeric:tabular-nums; text-align:right; }
+  .amt input:focus { outline:none; border-color:var(--accent); }
+
+  .foot { margin-top:18px; display:flex; gap:10px; }
+  .foot button { flex:1; padding:10px; border-radius:10px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--muted); font-size:13px; cursor:pointer; }
+  .foot button:active { transform:scale(.98); }
+  .cur-pick { margin:0 2px 16px; display:flex; gap:8px; align-items:center; }
+  .cur-pick label { color:var(--muted); font-size:12px; }
+  .cur-pick input { width:48px; padding:5px 8px; border-radius:8px; border:1px solid var(--line);
+    background:var(--panel-2); color:var(--text); font-size:13px; text-align:center; }
+</style>
+</head>
+<body>
+  <h1>RentRhythm</h1>
+  <p class="tagline">One rent, one income — seen by day, week, fortnight, month, quarter, year. (A month isn't 4 weeks.)</p>
+
+  <div class="basis" id="basis">
+    <button data-b="52">52-week year <small>rental standard</small></button>
+    <button data-b="365">365.25-day year <small>calendar</small></button>
+  </div>
+  <div class="factor" id="factor"></div>
+
+  <div class="cur-pick">
+    <label for="cur">Symbol</label>
+    <input id="cur" value="$" maxlength="3" />
+  </div>
+
+  <div id="rows"></div>
+
+  <div class="foot">
+    <button id="reset">Reset</button>
+  </div>
+
+<script>
+const PERIODS = [
+  { id:"day",       lab:"Day",       sub:"per day" },
+  { id:"week",      lab:"Week",      sub:"per week" },
+  { id:"fortnight", lab:"Fortnight", sub:"per 2 weeks" },
+  { id:"month",     lab:"Month",     sub:"per calendar month" },
+  { id:"quarter",   lab:"Quarter",   sub:"per 3 months" },
+  { id:"year",      lab:"Year",      sub:"per year" }
+];
+const KEY = "rentrhythm.state";
+
+// How many of this period fit in a year — the entire conversion model.
+function ppy(id, basis) {
+  const WPY = basis === "365" ? 365.25 / 7 : 52;     // weeks per year
+  const DPY = basis === "365" ? 365.25 : 364;        // days per year (52*7)
+  switch (id) {
+    case "day":       return DPY;
+    case "week":      return WPY;
+    case "fortnight": return WPY / 2;
+    case "month":     return 12;
+    case "quarter":   return 4;
+    case "year":      return 1;
+  }
+}
+
+let st = loadState();
+function loadState() {
+  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s.annual !== "undefined") return s; } catch (e) {}
+  return { annual: 600 * 52, basis: "52", cur: "$" };  // seed: $600/week
+}
+function save() { localStorage.setItem(KEY, JSON.stringify(st)); }
+
+const fmt = (n) => (!isFinite(n) || n === null)
+  ? "" : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+const parse = (s) => { const v = parseFloat(String(s).replace(/[^0-9.]/g, "")); return isFinite(v) ? v : null; };
+
+// Build rows once
+const rowsEl = document.getElementById("rows");
+PERIODS.forEach((p) => {
+  const row = document.createElement("div");
+  row.className = "row";
+  row.innerHTML =
+    `<div class="lab">${p.lab}<small>${p.sub}</small></div>` +
+    `<div class="amt"><span class="cur"></span>` +
+    `<input id="in-${p.id}" inputmode="decimal" enterkeyhint="done" placeholder="0.00" /></div>`;
+  rowsEl.appendChild(row);
+  const inp = row.querySelector("input");
+  inp.addEventListener("input", () => {
+    const v = parse(inp.value);
+    st.annual = v === null ? null : v * ppy(p.id, st.basis);
+    save();
+    render(p.id);            // don't overwrite the field being typed
+  });
+});
+
+function render(skipId) {
+  // basis toggle
+  document.querySelectorAll("#basis button").forEach((b) =>
+    b.classList.toggle("on", b.dataset.b === st.basis));
+  // currency symbol
+  document.querySelectorAll(".amt .cur").forEach((c) => (c.textContent = st.cur));
+  document.getElementById("cur").value = st.cur;
+  // factor hint — makes the "not x4" point visible
+  const wm = ppy("week", st.basis) / ppy("month", st.basis); // weeks per month
+  const wy = ppy("week", st.basis);                           // weeks per year
+  document.getElementById("factor").innerHTML =
+    `Month = Week × <b>${wm.toFixed(2)}</b> &nbsp;·&nbsp; Year = Week × <b>${wy.toFixed(st.basis === "365" ? 2 : 0)}</b> &nbsp;(not ×4)`;
+  // rows
+  PERIODS.forEach((p) => {
+    if (p.id === skipId) return;
+    const inp = document.getElementById("in-" + p.id);
+    inp.value = st.annual === null ? "" : fmt(st.annual / ppy(p.id, st.basis));
+  });
+}
+
+document.querySelectorAll("#basis button").forEach((b) =>
+  b.addEventListener("click", () => { st.basis = b.dataset.b; save(); render(); }));
+document.getElementById("cur").addEventListener("input", (e) => {
+  st.cur = e.target.value || ""; save(); render(document.activeElement && document.activeElement.id ? null : undefined);
+});
+document.getElementById("reset").addEventListener("click", () => {
+  st = { annual: 600 * 52, basis: st.basis, cur: st.cur }; save(); render();
+});
+
+render();
+
+if ("serviceWorker" in navigator) {
+  addEventListener("load", () => navigator.serviceWorker.register("./sw.js").catch(() => {}));
+}
+</script>
+</body>
+</html>
