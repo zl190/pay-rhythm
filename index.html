@@ -10,7 +10,7 @@
 <style>
   :root {
     --bg:#0b0d12; --panel:#11151c; --panel-2:#161b24; --line:#222a36;
-    --text:#e6edf3; --muted:#8b98a9; --accent:#56d364;
+    --text:#e6edf3; --muted:#8b98a9; --accent:#56d364; --warn:#e3b341;
   }
   * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
   html, body { margin:0; background:var(--bg); color:var(--text);
@@ -24,18 +24,19 @@
   .basis button { flex:1; padding:8px 0; border-radius:10px; border:1px solid var(--line);
     background:var(--panel-2); color:var(--muted); font-size:12.5px; cursor:pointer; }
   .basis button.on { background:var(--accent); color:#0b0d12; border-color:var(--accent); font-weight:600; }
-  .factor { color:var(--muted); font-size:12px; margin:0 2px 16px; min-height:1em; }
+  .factor { color:var(--muted); font-size:12px; margin:0 2px 12px; min-height:1em; }
   .factor b { color:var(--accent); font-weight:600; }
+
+  /* buyer-side anti-trap warning */
+  .warn { display:none; margin:0 0 16px; padding:10px 12px; border-radius:11px;
+    border:1px solid #5a4a1e; background:#1c1707; color:var(--warn); font-size:12.5px; line-height:1.55; }
+  .warn b { color:#f0c552; font-weight:700; }
 
   .row { display:grid; grid-template-columns:96px 1fr; align-items:center; gap:10px;
     padding:7px 0; border-bottom:1px solid var(--line); }
   .row:last-of-type { border-bottom:none; }
   .row .lab { color:var(--muted); font-size:14px; cursor:pointer; }
   .row .lab small { display:block; font-size:11px; opacity:.7; }
-  .row.anchored .lab { color:var(--accent); }
-  .anchormark { display:none; margin-left:5px; font-size:11px; }
-  .row.anchored .anchormark { display:inline; }
-  .hint { color:var(--muted); font-size:11.5px; margin:13px 2px 0; }
   .amt { position:relative; }
   .amt .cur { position:absolute; left:12px; top:50%; transform:translateY(-50%);
     color:var(--muted); font-size:16px; pointer-events:none; }
@@ -44,7 +45,24 @@
     font-size:18px; font-variant-numeric:tabular-nums; text-align:right; }
   .amt input:focus { outline:none; border-color:var(--accent); }
 
-  .foot { margin-top:18px; display:flex; gap:10px; }
+  /* tier 1 (Week / Month / Year) = first-class: brighter label, bigger number */
+  .row.t1 .lab { color:var(--text); font-size:15px; font-weight:600; }
+  .row.t1 .amt input { font-size:22px; }
+  /* tier 2 (Fortnight / Day / Quarter) = secondary, folded */
+  .row.t2 .lab { font-size:13px; }
+  .row.t2 .amt input { font-size:16px; }
+  /* anchor marker — must win over tier color, so it's defined last */
+  .anchormark { display:none; margin-left:5px; font-size:11px; }
+  .row.anchored .lab { color:var(--accent); }
+  .row.anchored .anchormark { display:inline; }
+
+  .more { width:100%; margin:11px 0 0; padding:9px 12px; border-radius:10px;
+    border:1px dashed var(--line); background:transparent; color:var(--muted);
+    font-size:12.5px; cursor:pointer; text-align:left; }
+  .more:hover { color:var(--text); border-color:var(--muted); }
+
+  .hint { color:var(--muted); font-size:11.5px; margin:14px 2px 0; }
+  .foot { margin-top:16px; display:flex; gap:10px; }
   .foot button { flex:1; padding:10px; border-radius:10px; border:1px solid var(--line);
     background:var(--panel-2); color:var(--muted); font-size:13px; cursor:pointer; }
   .foot button:active { transform:scale(.98); }
@@ -56,20 +74,23 @@
 </head>
 <body>
   <h1>RentRhythm</h1>
-  <p class="tagline">One rent, one income — seen by day, week, fortnight, month, quarter, year. (A month isn't 4 weeks.)</p>
+  <p class="tagline">One rent or income — seen by week, month, and year. (A month isn't 4 weeks.)</p>
 
   <div class="basis" id="basis">
     <button data-b="52">52-week year <small>rental standard</small></button>
     <button data-b="365">365.25-day year <small>calendar</small></button>
   </div>
   <div class="factor" id="factor"></div>
+  <div class="warn" id="warn"></div>
 
   <div class="cur-pick">
     <label for="cur">Symbol</label>
     <input id="cur" value="$" maxlength="3" />
   </div>
 
-  <div id="rows"></div>
+  <div id="rows-primary"></div>
+  <button class="more" id="moreBtn"></button>
+  <div id="rows-secondary" hidden></div>
   <p class="hint">⚓ Tap a label to anchor it — the anchored amount stays fixed when you switch year basis.</p>
 
   <div class="foot">
@@ -77,13 +98,15 @@
   </div>
 
 <script>
+// Tier 1 = the first-class periods (the killer path: weekly quote ⇄ monthly ⇄ yearly).
+// Tier 2 = folded by default. Fortnight kept because AU pays wages/benefits fortnightly.
 const PERIODS = [
-  { id:"day",       lab:"Day",       sub:"per day" },
-  { id:"week",      lab:"Week",      sub:"per week" },
-  { id:"fortnight", lab:"Fortnight", sub:"per 2 weeks" },
-  { id:"month",     lab:"Month",     sub:"per calendar month" },
-  { id:"quarter",   lab:"Quarter",   sub:"per 3 months" },
-  { id:"year",      lab:"Year",      sub:"per year" }
+  { id:"week",      lab:"Week",      sub:"per week",           tier:1 },
+  { id:"month",     lab:"Month",     sub:"per calendar month", tier:1 },
+  { id:"year",      lab:"Year",      sub:"per year",           tier:1 },
+  { id:"fortnight", lab:"Fortnight", sub:"per 2 weeks",        tier:2 },
+  { id:"day",       lab:"Day",       sub:"per day",            tier:2 },
+  { id:"quarter",   lab:"Quarter",   sub:"per 3 months",       tier:2 }
 ];
 const KEY = "rentrhythm.state";
 
@@ -103,8 +126,15 @@ function ppy(id, basis) {
 
 let st = loadState();
 function loadState() {
-  try { const s = JSON.parse(localStorage.getItem(KEY)); if (s && typeof s.annual !== "undefined") { if (!s.anchor) s.anchor = "week"; return s; } } catch (e) {}
-  return { annual: 600 * 52, basis: "52", cur: "$", anchor: "week" };  // seed: $600/week, anchored on the week
+  try {
+    const s = JSON.parse(localStorage.getItem(KEY));
+    if (s && typeof s.annual !== "undefined") {
+      if (!s.anchor) s.anchor = "week";
+      if (typeof s.expanded === "undefined") s.expanded = false;
+      return s;
+    }
+  } catch (e) {}
+  return { annual: 600 * 52, basis: "52", cur: "$", anchor: "week", expanded: false };
 }
 function save() { localStorage.setItem(KEY, JSON.stringify(st)); }
 
@@ -112,18 +142,18 @@ const fmt = (n) => (!isFinite(n) || n === null)
   ? "" : n.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 const parse = (s) => { const v = parseFloat(String(s).replace(/[^0-9.]/g, "")); return isFinite(v) ? v : null; };
 
-// Build rows once
-const rowsEl = document.getElementById("rows");
+// Build rows into their tier containers
+const primaryEl = document.getElementById("rows-primary");
+const secondaryEl = document.getElementById("rows-secondary");
 PERIODS.forEach((p) => {
   const row = document.createElement("div");
-  row.className = "row";
+  row.className = "row t" + p.tier;
   row.id = "row-" + p.id;
   row.innerHTML =
     `<div class="lab"><span>${p.lab}<span class="anchormark">⚓</span></span><small>${p.sub}</small></div>` +
     `<div class="amt"><span class="cur"></span>` +
     `<input id="in-${p.id}" inputmode="decimal" enterkeyhint="done" placeholder="0.00" /></div>`;
-  rowsEl.appendChild(row);
-  // tap the label to anchor this row (held fixed across a basis switch)
+  (p.tier === 1 ? primaryEl : secondaryEl).appendChild(row);
   row.querySelector(".lab").addEventListener("click", () => { st.anchor = p.id; save(); render(); });
   const inp = row.querySelector("input");
   inp.addEventListener("input", () => {
@@ -136,18 +166,38 @@ PERIODS.forEach((p) => {
 });
 
 function render(skipId) {
-  // basis toggle
   document.querySelectorAll("#basis button").forEach((b) =>
     b.classList.toggle("on", b.dataset.b === st.basis));
-  // currency symbol
   document.querySelectorAll(".amt .cur").forEach((c) => (c.textContent = st.cur));
   document.getElementById("cur").value = st.cur;
-  // factor hint — makes the "not x4" point visible
-  const wm = ppy("week", st.basis) / ppy("month", st.basis); // weeks per month
-  const wy = ppy("week", st.basis);                           // weeks per year
+
+  const wpm = ppy("week", st.basis) / ppy("month", st.basis); // weeks per month
+  const wpy = ppy("week", st.basis);                          // weeks per year
   document.getElementById("factor").innerHTML =
-    `Month = Week × <b>${wm.toFixed(2)}</b> <span style="opacity:.75">(not ×4)</span> &nbsp;·&nbsp; Year = Week × <b>${wy.toFixed(st.basis === "365" ? 2 : 0)}</b>`;
-  // rows
+    `Month = Week × <b>${wpm.toFixed(2)}</b> &nbsp;·&nbsp; Year = Week × <b>${wpy.toFixed(st.basis === "365" ? 2 : 0)}</b>`;
+
+  // buyer-side anti-trap: quantify the ×4 mental shortcut (under-counts, always)
+  const W = st.annual === null ? null : st.annual / ppy("week", st.basis); // weekly amount
+  const warnEl = document.getElementById("warn");
+  if (W && W > 0) {
+    const monthDiff = W * (wpm - 4);          // real month − naive (week×4)
+    const yearDiff  = W * (wpy - 48);         // real year − naive (×4×12); 52→ exactly 4 weeks
+    const pct = (wpy - 48) / wpy * 100;       // under-count relative to the true amount
+    const weeks = wpy - 48;
+    warnEl.style.display = "block";
+    warnEl.innerHTML =
+      `⚠️ Doing ×4 in your head under-counts by <b>${st.cur}${fmt(monthDiff)}</b>/mo · ` +
+      `<b>${st.cur}${fmt(yearDiff)}</b>/yr — about <b>${pct.toFixed(1)}%</b> ` +
+      `(the ${weeks.toFixed(weeks % 1 === 0 ? 0 : 1)} weeks people skip).`;
+  } else {
+    warnEl.style.display = "none";
+  }
+
+  // fold state
+  secondaryEl.hidden = !st.expanded;
+  document.getElementById("moreBtn").textContent =
+    st.expanded ? "▾  Less" : "▸  More — Fortnight · Day · Quarter";
+
   PERIODS.forEach((p) => {
     document.getElementById("row-" + p.id).classList.toggle("anchored", p.id === st.anchor);
     if (p.id === skipId) return;
@@ -156,6 +206,9 @@ function render(skipId) {
   });
 }
 
+document.getElementById("moreBtn").addEventListener("click", () => {
+  st.expanded = !st.expanded; save(); render();
+});
 document.querySelectorAll("#basis button").forEach((b) =>
   b.addEventListener("click", () => {
     const nb = b.dataset.b;
@@ -171,7 +224,8 @@ document.getElementById("cur").addEventListener("input", (e) => {
   st.cur = e.target.value || ""; save(); render(document.activeElement && document.activeElement.id ? null : undefined);
 });
 document.getElementById("reset").addEventListener("click", () => {
-  st = { annual: 600 * 52, basis: st.basis, cur: st.cur, anchor: "week" }; save(); render();
+  st = { annual: 600 * 52, basis: st.basis, cur: st.cur, anchor: "week", expanded: st.expanded };
+  save(); render();
 });
 
 render();
